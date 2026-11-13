@@ -42,6 +42,15 @@ Branch `libresdr-mmcx-pps` remaps PPS to front MMCX / **K18** / LVCMOS25 — see
 Do **NOT** flash QSPI until SD smoke tests pass. `libre.frm` may be included on
 the card only for a later, deliberate QSPI promotion.
 
+## Patching the ramdisk (stream `pluto_ctld`, etc.)
+
+Prefer `scripts/bake_libresdr_stream_uramdisk.sh` in this repo. If you repack by
+hand, **`cpio -o -H newc -R 0:0` is mandatory** — omitting `-R 0:0` records your
+host uid in the archive; BusyBox then runs setuid as that user and boot fails
+mounts / USB gadget. Symptoms and check: see `GOTCHAS.md` (“Never repack
+uramdisk/ramdisk cpio as your host user”).
+`boards/libresdr/validate_sd.sh` refuses a non-root-owned `bin/busybox`.
+
 ## Known bring-up notes (HamGeek / LibreSDR Rev.5)
 
 - The kernel extracted from `libre.frm` is a raw zImage; `uImage` on a working

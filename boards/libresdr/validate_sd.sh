@@ -45,6 +45,11 @@ grep -Fq 'uio_pdrv_genirq.of_id=uio_pdrv_genirq' "$SD/uEnv.txt" ||
 gzip -t "$SD/ramdisk.image.gz" || fail "ramdisk gzip integrity check failed"
 mkimage -l "$SD/uImage" >/dev/null || fail "invalid kernel uImage"
 mkimage -l "$SD/uramdisk.image.gz" >/dev/null || fail "invalid ramdisk uImage"
+# Hand-repacked ramdisks that omit `cpio -R 0:0` leave busybox setuid-to-uid1000;
+# boot then fails mounts / USB gadget while the kernel still looks healthy on UART.
+BB_LINE="$(gzip -dc "$SD/ramdisk.image.gz" | cpio -tvn 2>/dev/null | grep -E '^-.* bin/busybox$' || true)"
+echo "$BB_LINE" | grep -Eq '[[:space:]]0[[:space:]]+0[[:space:]]' ||
+    fail "bin/busybox in ramdisk is not uid/gid 0 (repack with cpio -R 0:0)"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

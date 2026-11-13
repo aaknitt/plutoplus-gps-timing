@@ -1,5 +1,14 @@
 # Gotchas (hard-won)
 
+- **Never repack `uramdisk`/`ramdisk` cpio as your host user.** `find | cpio -o -H newc`
+  without `-R 0:0` (or fakeroot) records uid/gid 1000 on every file. BusyBox is setuid, so
+  at boot `/init` drops to uid 1000 → `mount: you must be root`, missing `/proc`/`/sys`/
+  `/dev/urandom`, USB gadget never binds, host sees no RNDIS — while the kernel still probes
+  AD9361 on serial. Fix: repack with `cpio -o -H newc -R 0:0` and confirm
+  `gzip -dc ramdisk.image.gz | cpio -tvn | grep -E '^-.* bin/busybox$'` shows `0 0`.
+  `boards/libresdr/validate_sd.sh` rejects a non-root-owned busybox. Prefer
+  `scripts/bake_libresdr_stream_uramdisk.sh` over hand-rolled packs.
+
 - **No GPS fix is almost always antenna/reception.** The Pluto is an SDR and desenses the GPS L1
   band badly at close range — keep the GPS antenna **well away** from the board (a long-cable active
   antenna at a window/outside). A NEO-6M sitting next to the Pluto often sees only 1–2 satellites and
