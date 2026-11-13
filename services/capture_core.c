@@ -153,6 +153,10 @@ static int configure_tdd(struct iio_context *ctx) {
      * once with ch1 off at polarity 0, so disabling it latches ch1 LOW. */
     if (!g_tdd && access(TDD_V2_PATH "/enable", F_OK) == 0) {
         g_tdd_v2 = 1;
+        /* Must disable first: restore_rx_mode leaves enable=1, and a second enable=1
+         * does not re-latch polarity (GOTCHAS). Without this, ch1 stays HIGH and the
+         * DMA starts before the PPS window → "no start edge latched". */
+        sysfs_write("enable", 0);
         sysfs_write("out_channel1_polarity", 0);
         sysfs_write("out_channel1_enable", 0);
         sysfs_write("enable", 1);
@@ -181,16 +185,19 @@ static int configure_tdd(struct iio_context *ctx) {
  * yield the RX-DMA OR to pps_counter); hold channel1 HIGH again so the OR is HIGH and the
  * RX DMA captures freely, and drop pps_counter's window so only axi_tdd gates streaming. */
 static void restore_rx_mode(long long frame_len, long long rate) {
+    (void)frame_len;
+    (void)rate;
     if (g_tdd_v2) {
-        long long flen = frame_len > 1 ? frame_len : rate;
+        /* LibreSDR TDD v2: do NOT rely on a full-open on/off window. Without an external
+         * sync the core sits ARMED and an enabled channel window drives LOW — that starved
+         * stream_start after ~2 DMA blocks (refill -110). Latch ch1 HIGH the same way as
+         * the iio-axi-tdd path: channel off + polarity 1 across enable 0→1. */
         sysfs_write("enable", 0);
-        sysfs_write("frame_length_raw", flen - 1);
-        sysfs_write("out_channel1_on_raw", 0);
-        /* One low clock at the frame boundary guarantees the next DMA-start edge. */
-        sysfs_write("out_channel1_off_raw", flen - 1);
-        sysfs_write("out_channel1_polarity", 0);
-        sysfs_write("out_channel1_enable", 1);
-        sysfs_write("enable", 1);
+        sysfs_write("out_channel1_enable", 0);
+        sysfs_write("out_channel1_polarity", 1);
+        sysfs_write("out_channel2_enable", 0);
+        sysfs_write("out_channel2_polarity", 1);
+        sysfs_write("enable", 1); /* latches polarity → OR HIGH → free-running RX */
         note_latch();
         pps_ts_disable_frame();
         return;
