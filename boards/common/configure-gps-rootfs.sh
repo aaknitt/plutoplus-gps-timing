@@ -67,13 +67,13 @@ cp /build/hdl-src/pps_counter/xo_correct.sh "$OVERLAY/usr/bin/xo_correct.sh"
 chmod +x "$OVERLAY/usr/bin/xo_correct.sh"
 cat > "$OVERLAY/etc/init.d/S70xocorrect" <<'EOF'
 #!/bin/sh
+# Frequency lock needs PPS latch only; do not wait on chrony (needs NMEA/TOD).
 PIDFILE=/var/run/xocorrect.pid
 case "$1" in
  start)
   (
    while :; do
-    [ "$(devmem 0x7C460008 32 2>/dev/null)" = "0x00000001" ] &&
-      chronyc tracking 2>/dev/null | grep -q 'Leap status *: *Normal' && break
+    [ "$(devmem 0x7C460008 32 2>/dev/null)" = "0x00000001" ] && break
     sleep 5
    done
    exec sh /usr/bin/xo_correct.sh >>/var/log/xocorrect.log 2>&1

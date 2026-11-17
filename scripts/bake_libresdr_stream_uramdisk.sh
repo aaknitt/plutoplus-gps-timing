@@ -1,5 +1,6 @@
 #!/bin/bash
-# Patch output/libresdr-sd ramdisk with a drop-in pluto_ctld and wrap uramdisk.
+# Patch output/libresdr-sd ramdisk with a drop-in pluto_ctld (+ PPS-only
+# S70xocorrect) and wrap uramdisk.
 #
 # CRITICAL: the cpio MUST record uid/gid 0. Packing as the host user (e.g. 1000)
 # leaves busybox setuid-to-1000; at boot /init runs as non-root, mounts fail
@@ -35,6 +36,33 @@ cp -f "$DROPIN" usr/bin/pluto_ctld
 chmod 755 usr/bin/pluto_ctld
 chmod 4755 bin/busybox
 strings usr/bin/pluto_ctld | grep -q stream_start
+
+# PPS-only labs: do not block xo_correct on chrony Leap Normal (needs on-SDR NMEA).
+mkdir -p etc/init.d
+cat > etc/init.d/S70xocorrect <<'EOF'
+#!/bin/sh
+# Frequency lock needs PPS latch only; do not wait on chrony (needs NMEA/TOD).
+PIDFILE=/var/run/xocorrect.pid
+case "$1" in
+ start)
+  (
+   while :; do
+    [ "$(devmem 0x7C460008 32 2>/dev/null)" = "0x00000001" ] && break
+    sleep 5
+   done
+   exec sh /usr/bin/xo_correct.sh >>/var/log/xocorrect.log 2>&1
+  ) &
+  echo $! > "$PIDFILE"
+  ;;
+ stop) [ -f "$PIDFILE" ] && kill "$(cat "$PIDFILE")" 2>/dev/null || true; rm -f "$PIDFILE" ;;
+ restart) "$0" stop; "$0" start ;;
+esac
+EOF
+chmod 755 etc/init.d/S70xocorrect
+if grep -q 'chronyc tracking' etc/init.d/S70xocorrect; then
+  echo "ERROR: S70xocorrect still waits on chrony" >&2
+  exit 1
+fi
 
 cd "$WORKDIR"
 # -R 0:0 is mandatory — do not omit.
